@@ -21,14 +21,25 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS guests (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            name      TEXT    NOT NULL,
-            phone     TEXT    NOT NULL UNIQUE,
-            rsvp      TEXT    DEFAULT NULL,   -- 'yes' | 'no' | NULL
-            rsvp_time TEXT    DEFAULT NULL,
-            last_sent TEXT    DEFAULT NULL
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            name           TEXT    NOT NULL,
+            phone          TEXT    NOT NULL UNIQUE,
+            rsvp           TEXT    DEFAULT NULL,   -- 'yes' | 'no' | NULL
+            guest_count    INTEGER DEFAULT NULL,   -- number of guests if rsvp=yes
+            awaiting_count INTEGER DEFAULT 0,      -- 1 = waiting for guest count reply
+            rsvp_time      TEXT    DEFAULT NULL,
+            last_sent      TEXT    DEFAULT NULL
         )
     """)
+    # migrate existing DB that may not have the new columns
+    for col, definition in [
+        ("guest_count",    "INTEGER DEFAULT NULL"),
+        ("awaiting_count", "INTEGER DEFAULT 0"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE guests ADD COLUMN {col} {definition}")
+        except Exception:
+            pass   # column already exists
     conn.commit()
     conn.close()
     print("✅ Database ready:", DB_PATH)

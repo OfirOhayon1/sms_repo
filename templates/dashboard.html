@@ -31,7 +31,7 @@
     /* ── Stats ── */
     .stats {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 16px;
       margin-bottom: 28px;
     }
@@ -165,6 +165,10 @@
       <div class="number">{{ stats.yes }}</div>
       <div class="label">מגיעים ✅</div>
     </div>
+    <div class="stat-card" style="background:white;border-radius:12px;padding:20px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+      <div class="number" style="color:#8b5cf6;font-size:2.2rem;font-weight:800;line-height:1;">{{ stats.total_guests }}</div>
+      <div class="label" style="font-size:0.85rem;color:#666;margin-top:6px;">סה"כ אורחים 👥</div>
+    </div>
     <div class="stat-card no">
       <div class="number">{{ stats.no }}</div>
       <div class="label">לא מגיעים ❌</div>
@@ -216,6 +220,7 @@
           <th>שם</th>
           <th>טלפון</th>
           <th>תשובה</th>
+          <th>אורחים</th>
           <th>זמן תגובה</th>
           <th>פעולות</th>
         </tr>
@@ -232,6 +237,15 @@
               <span class="badge badge-no">לא מגיע/ה ❌</span>
             {% else %}
               <span class="badge badge-pending">ממתין/ה ⏳</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if g.rsvp == 'yes' and g.guest_count %}
+              <strong>{{ g.guest_count }}</strong>
+            {% elif g.rsvp == 'yes' %}
+              <span style="color:#f59e0b">ממתין למספר…</span>
+            {% else %}
+              —
             {% endif %}
           </td>
           <td>{{ g.rsvp_time or "—" }}</td>

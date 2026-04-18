@@ -1,8 +1,11 @@
 """
-SMS RSVP System - Main Application
-------------------------------------
+WhatsApp RSVP System - Main Application
+-----------------------------------------
 Run: python app.py
 Webhook URL for Twilio: http://<your-ngrok-url>/sms/reply
+
+Sandbox:    TWILIO_FROM_NUMBER=+14155238886  (Twilio Sandbox)
+Production: TWILIO_FROM_NUMBER=+1xxxxxxxxxx  (approved WA Business number)
 """
 
 import os
@@ -20,9 +23,14 @@ app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
 # ── Twilio credentials ────────────────────────────────────────────────────────
 TWILIO_ACCOUNT_SID = os.environ["TWILIO_ACCOUNT_SID"]
 TWILIO_AUTH_TOKEN  = os.environ["TWILIO_AUTH_TOKEN"]
-TWILIO_FROM_NUMBER = os.environ["TWILIO_FROM_NUMBER"]   # e.g. +12025551234
+TWILIO_FROM_NUMBER = os.environ["TWILIO_FROM_NUMBER"]   # Sandbox: +14155238886
 
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+# WhatsApp prefix helper
+def wa(number: str) -> str:
+    """Wrap a phone number with the whatsapp: prefix Twilio expects."""
+    return f"whatsapp:{number}"
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -35,10 +43,11 @@ def dashboard():
     ).fetchall()
 
     stats = {
-        "total":    len(guests),
-        "yes":      sum(1 for g in guests if g["rsvp"] == "yes"),
-        "no":       sum(1 for g in guests if g["rsvp"] == "no"),
-        "pending":  sum(1 for g in guests if g["rsvp"] is None),
+        "total":        len(guests),
+        "yes":          sum(1 for g in guests if g["rsvp"] == "yes"),
+        "no":           sum(1 for g in guests if g["rsvp"] == "no"),
+        "pending":      sum(1 for g in guests if g["rsvp"] is None),
+        "total_guests": sum(g["guest_count"] or 0 for g in guests if g["rsvp"] == "yes"),
     }
     return render_template("dashboard.html", guests=guests, stats=stats)
 
@@ -104,8 +113,8 @@ def send_invitations():
     for guest in guests:
         try:
             twilio_client.messages.create(
-                to=guest["phone"],
-                from_=TWILIO_FROM_NUMBER,
+                to=wa(guest["phone"]),
+                from_=wa(TWILIO_FROM_NUMBER),
                 body=message_text,
             )
             db.execute(
@@ -117,16 +126,20 @@ def send_invitations():
             print(f"[ERROR] Failed to send to {guest['name']} ({guest['phone']}): {e}")
 
     db.commit()
-    flash(f"📨 הודעות נשלחו ל-{sent_count} אנשים", "success")
+    flash(f"💬 הודעות WhatsApp נשלחו ל-{sent_count} אנשים", "success")
     return redirect(url_for("dashboard"))
 
 
-# ── Twilio webhook – incoming SMS ─────────────────────────────────────────────
+# ── Twilio webhook – incoming WhatsApp ───────────────────────────────────────
+
+MAX_GUESTS = 20
 
 @app.route("/sms/reply", methods=["POST"])
 def sms_reply():
-    from_number = request.form.get("From", "").strip()
-    body        = request.form.get("Body", "").strip().lower()
+    raw_from = request.form.get("From", "").strip()
+    # Twilio sends "whatsapp:+972501234567" – strip the prefix for DB lookup
+    from_number = raw_from.replace("whatsapp:", "")
+    body        = request.form.get("Body", "").strip()
 
     db = get_db()
     guest = db.execute(
@@ -139,27 +152,54 @@ def sms_reply():
         resp.message("מספר זה אינו רשום במערכת. פנה/י לבעל האירוע.")
         return str(resp), 200, {"Content-Type": "text/xml"}
 
-    # Parse answer – supports Hebrew and English variations
-    YES_WORDS = {"כן", "yes", "y", "אכן", "בטח", "בטוח", "1", "אני מגיע", "אני מגיעה"}
-    NO_WORDS  = {"לא", "no", "n", "0", "לא מגיע", "לא מגיעה"}
+    # ── Step 2: waiting for guest count ──────────────────────────────────────
+    if guest["awaiting_count"]:
+        try:
+            count = int(body.strip())
+            if count < 1 or count > MAX_GUESTS:
+                raise ValueError
+        except ValueError:
+            resp.message(f"אנא ענה/י במספר בין 1 ל-{MAX_GUESTS}.")
+            return str(resp), 200, {"Content-Type": "text/xml"}
 
-    if body in YES_WORDS:
-        rsvp = "yes"
-        reply = f"תודה {guest['name']}! אישרנו את הגעתך 🎉"
-    elif body in NO_WORDS:
-        rsvp = "no"
-        reply = f"תודה {guest['name']}, קיבלנו את עדכונך. נשמח לראותך בפעם אחרת."
-    else:
-        resp.message("לא הבנו את תשובתך. אנא ענה/י 'כן' אם תגיע/י, או 'לא' אם לא תגיע/י.")
+        db.execute(
+            """UPDATE guests
+               SET guest_count = ?, awaiting_count = 0, rsvp_time = datetime('now')
+               WHERE id = ?""",
+            (count, guest["id"]),
+        )
+        db.commit()
+        guests_word = "אורח" if count == 1 else "אורחים"
+        resp.message(f"מעולה! רשמנו {count} {guests_word} על שמך. נתראה באירוע! 🎉")
         return str(resp), 200, {"Content-Type": "text/xml"}
 
-    db.execute(
-        "UPDATE guests SET rsvp = ?, rsvp_time = datetime('now') WHERE id = ?",
-        (rsvp, guest["id"]),
-    )
-    db.commit()
+    # ── Step 1: yes / no ─────────────────────────────────────────────────────
+    body_lower = body.lower()
+    YES_WORDS = {"כן", "yes", "y", "אכן", "בטח", "בטוח"}
+    NO_WORDS  = {"לא", "no",  "n"}
 
-    resp.message(reply)
+    if body_lower in YES_WORDS:
+        # Mark yes, then ask for guest count
+        db.execute(
+            "UPDATE guests SET rsvp = 'yes', awaiting_count = 1 WHERE id = ?",
+            (guest["id"],),
+        )
+        db.commit()
+        resp.message(f"תודה {guest['name']}! 😊\nכמה אורחים יגיעו? (ענה/י מספר בין 1 ל-{MAX_GUESTS})")
+
+    elif body_lower in NO_WORDS:
+        db.execute(
+            """UPDATE guests
+               SET rsvp = 'no', awaiting_count = 0, rsvp_time = datetime('now')
+               WHERE id = ?""",
+            (guest["id"],),
+        )
+        db.commit()
+        resp.message(f"תודה {guest['name']}, קיבלנו את עדכונך. נשמח לראותך בפעם אחרת 🙏")
+
+    else:
+        resp.message("אנא ענה/י *כן* אם תגיע/י, או *לא* אם לא תגיע/י.")
+
     return str(resp), 200, {"Content-Type": "text/xml"}
 
 
@@ -169,7 +209,7 @@ def sms_reply():
 def reset_rsvp(guest_id):
     db = get_db()
     db.execute(
-        "UPDATE guests SET rsvp = NULL, rsvp_time = NULL WHERE id = ?",
+        "UPDATE guests SET rsvp = NULL, rsvp_time = NULL, guest_count = NULL, awaiting_count = 0 WHERE id = ?",
         (guest_id,),
     )
     db.commit()
@@ -186,14 +226,14 @@ def export_csv():
     from flask import Response
 
     db = get_db()
-    guests = db.execute("SELECT name, phone, rsvp, rsvp_time FROM guests ORDER BY name").fetchall()
+    guests = db.execute("SELECT name, phone, rsvp, guest_count, rsvp_time FROM guests ORDER BY name").fetchall()
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["שם", "טלפון", "RSVP", "זמן תגובה"])
+    writer.writerow(["שם", "טלפון", "RSVP", "מספר אורחים", "זמן תגובה"])
     for g in guests:
         rsvp_display = {"yes": "מגיע/ה", "no": "לא מגיע/ה"}.get(g["rsvp"], "ממתין/ה")
-        writer.writerow([g["name"], g["phone"], rsvp_display, g["rsvp_time"] or ""])
+        writer.writerow([g["name"], g["phone"], rsvp_display, g["guest_count"] or "", g["rsvp_time"] or ""])
 
     output.seek(0)
     return Response(
