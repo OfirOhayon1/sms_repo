@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>מערכת אישור הגעה</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      direction: rtl;
+    }
+
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; }
+    header span { font-size: 1.8rem; }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
+
+    /* ── Stats ── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .stat-card .number { font-size: 2.2rem; font-weight: 800; line-height: 1; }
+    .stat-card .label  { font-size: 0.85rem; color: #666; margin-top: 6px; }
+    .stat-card.total  .number { color: #667eea; }
+    .stat-card.yes    .number { color: #22c55e; }
+    .stat-card.no     .number { color: #ef4444; }
+    .stat-card.pending .number { color: #f59e0b; }
+
+    /* ── Cards ── */
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      margin-bottom: 24px;
+    }
+    .card h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 18px; color: #374151; }
+
+    /* ── Forms ── */
+    .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+    input[type="text"], textarea, select {
+      border: 1.5px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 9px 13px;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: inherit;
+      direction: rtl;
+    }
+    input[type="text"]:focus, textarea:focus, select:focus {
+      border-color: #667eea;
+    }
+    textarea { width: 100%; min-height: 80px; resize: vertical; margin-bottom: 10px; }
+
+    .btn {
+      padding: 9px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .btn:hover  { opacity: 0.88; }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary  { background: #667eea; color: white; }
+    .btn-success  { background: #22c55e; color: white; }
+    .btn-danger   { background: #ef4444; color: white; }
+    .btn-warning  { background: #f59e0b; color: white; }
+    .btn-outline  { background: white; color: #667eea; border: 1.5px solid #667eea; }
+    .btn-sm       { padding: 5px 12px; font-size: 0.8rem; }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th {
+      background: #f8f9fa;
+      padding: 10px 14px;
+      text-align: right;
+      font-weight: 600;
+      color: #6b7280;
+      border-bottom: 2px solid #e5e7eb;
+    }
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #f3f4f6;
+      vertical-align: middle;
+    }
+    tr:hover td { background: #fafafa; }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .badge-yes     { background: #dcfce7; color: #16a34a; }
+    .badge-no      { background: #fee2e2; color: #dc2626; }
+    .badge-pending { background: #fef3c7; color: #d97706; }
+
+    .actions { display: flex; gap: 6px; }
+
+    /* ── Flash messages ── */
+    .flash { padding: 12px 18px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem; }
+    .flash.success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .flash.error   { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+    /* ── Send section ── */
+    .send-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+    .export-row { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+
+    @media (max-width: 700px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span>🎉</span>
+  <h1>מערכת אישור הגעה – SMS</h1>
+</header>
+
+<div class="container">
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card total">
+      <div class="number">{{ stats.total }}</div>
+      <div class="label">סה"כ מוזמנים</div>
+    </div>
+    <div class="stat-card yes">
+      <div class="number">{{ stats.yes }}</div>
+      <div class="label">מגיעים ✅</div>
+    </div>
+    <div class="stat-card no">
+      <div class="number">{{ stats.no }}</div>
+      <div class="label">לא מגיעים ❌</div>
+    </div>
+    <div class="stat-card pending">
+      <div class="number">{{ stats.pending }}</div>
+      <div class="label">ממתינים ⏳</div>
+    </div>
+  </div>
+
+  <!-- Add guest -->
+  <div class="card">
+    <h2>➕ הוספת אורח/ת</h2>
+    <form action="/guests/add" method="POST">
+      <div class="form-row">
+        <input type="text" name="name"  placeholder="שם מלא"          required style="flex:2; min-width:160px">
+        <input type="text" name="phone" placeholder="טלפון (0501234567)" required style="flex:2; min-width:160px">
+        <button type="submit" class="btn btn-primary">הוסף/י</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Send SMS -->
+  <div class="card">
+    <h2>📨 שליחת הודעות SMS</h2>
+    <form action="/send" method="POST">
+      <textarea name="message_text" placeholder="לדוגמה: שלום {name}! אנחנו שמחים להזמין אותך לאירוע שלנו ב-15 לחודש. האם תוכל/י להגיע? ענה/י כן או לא.">שלום! אנחנו שמחים להזמין אותך לאירוע. האם תוכל/י להגיע? ענה/י כן או לא.</textarea>
+      <div class="send-controls">
+        <select name="send_to">
+          <option value="all">לכולם</option>
+          <option value="pending">רק לממתינים</option>
+        </select>
+        <button type="submit" class="btn btn-success">שלח/י הודעות</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Guest list -->
+  <div class="card">
+    <h2>📋 רשימת מוזמנים</h2>
+    <div class="export-row">
+      <a href="/export" class="btn btn-outline btn-sm">⬇️ ייצוא CSV</a>
+    </div>
+
+    {% if guests %}
+    <table>
+      <thead>
+        <tr>
+          <th>שם</th>
+          <th>טלפון</th>
+          <th>תשובה</th>
+          <th>זמן תגובה</th>
+          <th>פעולות</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in guests %}
+        <tr>
+          <td><strong>{{ g.name }}</strong></td>
+          <td dir="ltr">{{ g.phone }}</td>
+          <td>
+            {% if g.rsvp == 'yes' %}
+              <span class="badge badge-yes">מגיע/ה ✅</span>
+            {% elif g.rsvp == 'no' %}
+              <span class="badge badge-no">לא מגיע/ה ❌</span>
+            {% else %}
+              <span class="badge badge-pending">ממתין/ה ⏳</span>
+            {% endif %}
+          </td>
+          <td>{{ g.rsvp_time or "—" }}</td>
+          <td>
+            <div class="actions">
+              <form action="/guests/reset/{{ g.id }}" method="POST">
+                <button class="btn btn-warning btn-sm" title="אפס תשובה">↺</button>
+              </form>
+              <form action="/guests/delete/{{ g.id }}" method="POST"
+                    onsubmit="return confirm('למחוק את {{ g.name }}?')">
+                <button class="btn btn-danger btn-sm">🗑</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p style="color:#9ca3af; text-align:center; padding:24px">אין מוזמנים עדיין. התחל/י להוסיף!</p>
+    {% endif %}
+  </div>
+
+</div>
+</body>
+</html>
