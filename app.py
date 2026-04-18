@@ -94,7 +94,8 @@ def delete_guest(guest_id):
 @app.route("/send", methods=["POST"])
 def send_invitations():
     message_text = request.form.get("message_text", "").strip()
-    send_to      = request.form.get("send_to", "all")   # all | pending
+    send_to      = request.form.get("send_to", "all")
+    image_url    = request.form.get("image_url", "").strip()
 
     if not message_text:
         flash("יש להזין טקסט להודעה", "error")
@@ -103,20 +104,22 @@ def send_invitations():
     db = get_db()
 
     if send_to == "pending":
-        guests = db.execute(
-            "SELECT * FROM guests WHERE rsvp IS NULL"
-        ).fetchall()
+        guests = db.execute("SELECT * FROM guests WHERE rsvp IS NULL").fetchall()
     else:
         guests = db.execute("SELECT * FROM guests").fetchall()
 
     sent_count = 0
     for guest in guests:
         try:
-            twilio_client.messages.create(
+            msg_params = dict(
                 to=wa(guest["phone"]),
                 from_=wa(TWILIO_FROM_NUMBER),
                 body=message_text,
             )
+            if image_url:
+                msg_params["media_url"] = [image_url]
+
+            twilio_client.messages.create(**msg_params)
             db.execute(
                 "UPDATE guests SET last_sent = datetime('now') WHERE id = ?",
                 (guest["id"],),

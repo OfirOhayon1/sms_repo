@@ -195,7 +195,10 @@
   <div class="card">
     <h2>📨 שליחת הודעות SMS</h2>
     <form action="/send" method="POST">
-      <textarea name="message_text" placeholder="לדוגמה: שלום {name}! אנחנו שמחים להזמין אותך לאירוע שלנו ב-15 לחודש. האם תוכל/י להגיע? ענה/י כן או לא.">שלום! אנחנו שמחים להזמין אותך לאירוע. האם תוכל/י להגיע? ענה/י כן או לא.</textarea>
+      <textarea name="message_text" placeholder="לדוגמה: שלום! אנחנו שמחים להזמין אותך לאירוע. האם תוכל/י להגיע? ענה/י כן או לא.">שלום! אנחנו שמחים להזמין אותך לאירוע. האם תוכל/י להגיע? ענה/י כן או לא.</textarea>
+      <div style="margin-bottom:10px;">
+        <input type="text" name="image_url" placeholder="🖼 קישור לתמונה (אופציונלי) – לדוגמה: https://i.imgur.com/abc.jpg" style="width:100%">
+      </div>
       <div class="send-controls">
         <select name="send_to">
           <option value="all">לכולם</option>
